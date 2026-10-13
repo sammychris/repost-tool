@@ -1,2 +1,4 @@
-faster-whisper
+numpy
+Pillow
 gradio
+faster-whisper  # optional: only for subtitles from speech

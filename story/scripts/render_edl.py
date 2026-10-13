@@ -28,6 +28,9 @@ import json, subprocess, sys, os, re, tempfile
 from fractions import Fraction
 from collections import Counter
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))  # tool folder, for report.py
+import report
+
 FADE = 0.02
 
 def load(path):
@@ -179,6 +182,11 @@ def main():
         t += max(1, round((s["out"] - s["in"]) * FPS)) / FPS
     if loud:
         print(f"loudness in: {loud['input_i']} LUFS, true peak {loud['input_tp']} dBTP")
+    vids = sorted({e["sources"][s["v"]] for s in e["segments"]})
+    others = sorted({e["sources"][a["src"]] for s in e["segments"] for a in s["audio"] if a["src"] in e["sources"]} - set(vids))
+    rep = os.path.splitext(out)[0] + "_report.txt"
+    fails = report.write(out, vids, total, rep, loud_target=e.get("loudness", -16), other_sources=others)
+    print(f"report: {rep}  ({f'{fails} FAIL' if fails else 'all PASS'})")
 
 if __name__ == "__main__":
     main()

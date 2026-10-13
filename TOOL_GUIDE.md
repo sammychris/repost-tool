@@ -1,12 +1,12 @@
 # Clip Desk: tool guide
 
-**Version:** 1.0.0 (2026-10-13)
+**Version:** 1.1.0 (2026-10-13)
 **Folder:** `C:\Users\SAMMY\Desktop\video tool`
 **Rule:** whenever the tool changes, update this guide and bump the version (patch = fix, minor = new command or field).
 
 Clip Desk is one engine with two doors:
 - **Web page:** double-click `run.bat`. A local page opens with drag and drop, a live framing preview, captions and export (exports go to `Videos\Repost Tool`).
-- **Command mode:** `clipdesk.bat <command> ...` from any folder. This is what Claude uses.
+- **Command mode:** `clipdesk.bat <command> ...` from any folder (Linux: `python clipdesk.py <command> ...`). This is what Claude uses.
 
 Before a job, read `style-notes.md` (the user's preferences).
 
@@ -20,7 +20,7 @@ Before a job, read `style-notes.md` (the user's preferences).
 4. **Never overwrites.**
    - Output goes next to the first input, or into a `3 Final` folder if one exists there or one level up.
    - It is named `<name>_<job>.mp4`; `_2`, `_3`… are added if the name is taken.
-5. Every `run` prints the output path, size before → after, duration and size/fps, and writes `<output>_check.jpg` (6 frames across the video).
+5. Every `run` prints the output path, size before → after, duration and size/fps, and writes `<output>_check.jpg` (6 frames across the video) and `<output>_report.txt` (see **Run report**).
 6. Errors are plain English on stderr, exit code 1. Success is exit code 0. Command mode never asks questions.
 
 ## Commands
@@ -31,10 +31,11 @@ Before a job, read `style-notes.md` (the user's preferences).
 | `subs-detect <video>` | Finds when each burned-in subtitle appears and disappears. | `<video>_clipdesk\cues.json` (times, empty `text`) + `cues_strips.png` (one numbered strip per cue, to read the words) |
 | `coldopen-suggest <video>` | Scores 3 cold-open candidates (loud, big movement, right after a cut). Skips the last 20% so it never shows the ending or punchline. | `<video>_clipdesk\coldopen.json` + `coldopen_candidates.jpg` |
 | `preview <job.json> [--at 0:12]` | One still of the final layout (framing, Stack, subtitles) on the first input. The time comes from `--at`, else `preview_at` in the job, else 1/3 in. | `<output>_preview.jpg` |
-| `run <job.json>` | Does the job and exports. | output MP4 + `_check.jpg` + summary |
+| `run <job.json>` | Does the job and exports. | output MP4 + `_check.jpg` + `_report.txt` + summary |
 | `presets` | Lists the presets in `presets.json`. | screen |
+| `pack [dest.zip]` | Zips the tool (code, fonts, presets, style notes, guides, story pack; no videos, no `.venv`, no HANDOFF files) to upload to a cloud chat. | `clipdesk-pack.zip` in the tool folder |
 | `inspect <clip> [outdir] [--every 0.5]` | Story: logs a clip (cuts, frozen spans, silences, loudness, contact sheet, spectrogram). | `<clip>-log\` |
-| `render-edl <edl.json> [--preview] [--native-size]` | Story: renders a cut from an EDL. `--native-size` keeps the sources' own size/fps when they all match. It prints the source size → output size. | the EDL's `output` |
+| `render-edl <edl.json> [--preview] [--native-size]` | Story: renders a cut from an EDL. `--native-size` keeps the sources' own size/fps when they all match. It prints the source size → output size. | the EDL's `output` + `<output>_report.txt` |
 | `check-seams <edl.json> [rendered.mp4] [outdir]` | Story: checks each cut (flash frames, audio pops) and makes a strip per cut. | `<output>-seams\seams.jpg` |
 
 Examples:
@@ -43,7 +44,27 @@ clipdesk.bat probe "D:\clips\standoff.mp4"
 clipdesk.bat subs-detect "D:\clips\who.mp4"
 clipdesk.bat preview "D:\clips\job.json" --at 0:12
 clipdesk.bat run "D:\clips\job.json"
+clipdesk.bat pack
 ```
+
+## Run report (`<output>_report.txt`)
+Written by every `run` and `render-edl`. One line per check, so a render can be verified without looking at frames:
+```
+LENGTH   PASS  planned 12.00s  actual 12.00s  (tolerance 2 frames)
+SYNC     PASS  audio-video start offset 0.00s, duration gap 0.00s  (fail above 0.04s)
+FROZEN   PASS  none  (freezedetect, fail on any frozen span over 0.5s not present in the source)
+BLACK    PASS  none  (blackdetect, fail on black over 0.2s not present in the source)
+LOUDNESS INFO  -13.6 LUFS  (no target: the original level is kept)
+STREAMS  PASS  video h264 1080x1920 24fps, audio aac 48kHz stereo
+SIZE     INFO  sources 12.9 MB -> output 2.4 MB
+```
+- **LENGTH**: planned = inputs after trims, + images, + cold open, − fade overlaps (EDL: the sum of its segments).
+- **FROZEN / BLACK**: a frozen or black span passes when the sources (or a still image) already have one at least as long. In Stack and other new frame sizes only the video area is checked, so the text and black bars don't count. It matches by length, not position.
+- **LOUDNESS**: `run` keeps the original level, so this is INFO. `render-edl` checks against the EDL's `loudness` (default −16, tolerance 1 LU).
+- The summary line says `all PASS` or how many FAILs. On a FAIL, read the line, fix the job and re-run.
+
+## Windows and Linux
+The same folder runs unchanged on both. Linux (or a cloud chat): unzip `clipdesk-pack.zip`, `cd clipdesk`, `pip install -r requirements.txt`, then `python clipdesk.py <command>`. Needs `ffmpeg`/`ffprobe` on PATH (`apt install ffmpeg`). Whisper (`faster-whisper`) is optional: without it, Whisper subtitles fail with a clear message and everything else works. Fonts always come from `fonts/`.
 
 Story cuts follow `story\STORY_EDIT.md` (full workflow) and `story\edit-rules.md`.
 
@@ -159,12 +180,14 @@ Merge scenes, then Stack for Shorts, Part 2:
 | File | What |
 |---|---|
 | `clipdesk.py`, `clipdesk.bat` | engine + command mode |
+| `report.py` | run report (used by `run` and `render-edl`) |
 | `render.py`, `captions.py`, `app.py`, `run.bat` | shared layout/caption code and the web page |
 | `fonts/` | Inter Display Black / ExtraBold / Medium + OFL licence |
 | `presets.json`, `style-notes.md` | presets, the user's preferences |
 | `story/` | story-cut workflow and scripts (`inspect`, `render-edl`, `check-seams`) |
 
-Needs: Python 3.11+ with `.venv` (made by `run.bat` on first launch), FFmpeg on PATH (`winget install Gyan.FFmpeg`).
+Needs: Python 3.11+ with `.venv` (made by `run.bat` on first launch), FFmpeg on PATH (`winget install Gyan.FFmpeg` on Windows, `apt install ffmpeg` on Linux).
 
 ## Changelog
 - **1.0.0 (2026-10-13):** command mode, job files, Stack presets, subtitle detection, cold open, merge/trim/images, music modes, story commands, `--native-size`.
+- **1.1.0 (2026-10-13):** run report (`_report.txt`) for `run` and `render-edl`; `pack` command; runs on Linux too (tested in Docker); Whisper optional; lossless intermediates are .mov (.mkv dropped the last frame of Stack jobs); clear message when FFmpeg is missing on Windows.

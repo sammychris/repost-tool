@@ -4,12 +4,12 @@ Usage (from any folder):  clipdesk.bat <command> ...   or   .venv\\Scripts\\pyth
 Commands: probe, subs-detect, coldopen-suggest, preview, run, presets, inspect, render-edl, check-seams.
 See TOOL_GUIDE.md for every command and job field.
 """
-import argparse, copy, difflib, io, json, os, re, subprocess, sys, uuid
+import argparse, copy, difflib, io, json, os, re, shutil, subprocess, sys, uuid
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-import captions, render
+import captions, render, report
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 HERE = render.HERE
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
 SUB_BAND = (0.86, 0.94)  # where burned-in subtitles sit, as a share of the source height
@@ -17,6 +17,7 @@ SUB_BAND = (0.86, 0.94)  # where burned-in subtitles sit, as a share of the sour
 COLOURS = {"white": "&H00FFFFFF", "orange": "&H001F9AFF", "yellow": "&H004DE1FF", "black_box": "&H00FFFFFF"}
 HQ = ["-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p"]
 SMALL = ["-c:v", "libx264", "-crf", "23", "-preset", "slow", "-pix_fmt", "yuv420p"]
+# Intermediates are .mov: .mkv rounds timestamps to 1 ms and the overlay then drops the last frame.
 LOSSLESS = ["-c:v", "libx264", "-qp", "0", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le"]
 
 
@@ -463,6 +464,7 @@ def visual_filter(job, src, src_info, ass_path):
         g = render.geometry(sw, sh, mode, frame.get("zoom"), float(frame.get("offset_x", 0)), burned, stack=bool(stack))
         W, H = g["W"], g["H"]
         (cw, ch, cx, cy), (vw, vh, vx, vy) = g["crop"], g["video"]
+        job["_video_box"] = g["video"]  # the run report checks freezes/black inside the video only
         f = [f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale={vw}:{vh}:flags=lanczos,setsar=1[v]"]
         if frame.get("background", "black") == "blur":
             f[0] = f[0][:-3] + ",split[v][b]"
@@ -596,6 +598,9 @@ def cmd_run(job_path, preview_at=None):
         segs = segments(job)
         transition = (job.get("merge") or {}).get("transition", "cut")
         plain = all(not s.get("image") and not s["start"] and s["end"] is None for s in segs)
+        durs = {i["file"]: i.get("duration", 0) for i in infos}
+        planned = sum(s["dur"] if s.get("image") else (s["end"] if s["end"] is not None else durs[s["file"]]) - s["start"]
+                      for s in segs) - (0.5 * (len(segs) - 1) if transition == "fade" else 0)
         co = job.get("cold_open")
         visual_or_music = bool(job.get("stack") or job.get("subtitles") or job.get("music")
                                or (job.get("frame") or {}).get("mode", "original") != "original"
@@ -615,7 +620,7 @@ def cmd_run(job_path, preview_at=None):
             if not visual_or_music:
                 base = assemble(segs, out, final_codec + ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"], transition)
             else:
-                base = assemble(segs, tmp(".mkv"), LOSSLESS, transition)
+                base = assemble(segs, tmp(".mov"), LOSSLESS, transition)
                 temps.append(base)
             base_reencoded = True
         # 2) cold open: a 2-4 s tease, a flash or cut, then the video from the start
@@ -629,11 +634,12 @@ def cmd_run(job_path, preview_at=None):
                 a, b = secs(co["start"]), secs(co["end"])
             flash = co.get("transition", "flash") == "flash"
             cut = assemble([{"file": base, "start": a, "end": b},
-                            {"file": base, "start": 0, "end": None, "flash": flash}], tmp(".mkv"), LOSSLESS)
+                            {"file": base, "start": 0, "end": None, "flash": flash}], tmp(".mov"), LOSSLESS)
             temps.append(cut)
             base, base_reencoded = cut, True
+            planned += b - a
         if base == out:
-            return finish(job, out, infos)
+            return finish(out, infos, segs, planned, job)
 
         # 3) one final pass: framing / Stack / subtitles / music
         bi = info(base)
@@ -665,19 +671,24 @@ def cmd_run(job_path, preview_at=None):
             amap, acodec = ["-map", "0:a?"], ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
         fc = ["-filter_complex", ";".join(f)] if f else []
         ff(cmd + fc + vmap + amap + vcodec + acodec + ["-movflags", "+faststart", out], "Exporting")
-        return finish(job, out, infos)
+        return finish(out, infos, segs, planned, job)
     finally:
         for t in temps:
             if os.path.exists(t):
                 os.remove(t)
 
 
-def finish(job, out, infos):
+def finish(out, infos, segs, planned, job):
     before = sum(i["size_mb"] for i in infos)
     o = info(out)
     check = check_sheet(out, os.path.splitext(out)[0] + "_check.jpg")
+    rep = os.path.splitext(out)[0] + "_report.txt"
+    fails = report.write(out, [i["file"] for i in infos if not i["image"]], planned, rep,
+                         images=[(s["file"], s["dur"]) for s in segs if s.get("image")],
+                         other_sources=[job["music"]["file"]] if job.get("music") else [], box=job.get("_video_box"))
     print(f"output:   {out}\nsize:     {before:.1f} MB -> {o['size_mb']:.1f} MB\n"
-          f"duration: {o['duration']:.2f} s   {o.get('width')}x{o.get('height')} @ {o.get('fps')} fps\ncheck:    {check}")
+          f"duration: {o['duration']:.2f} s   {o.get('width')}x{o.get('height')} @ {o.get('fps')} fps\ncheck:    {check}\n"
+          f"report:   {rep}  ({f'{fails} FAIL' if fails else 'all PASS'})")
     return out
 
 
@@ -695,6 +706,28 @@ def cmd_probe(files):
 def cmd_presets():
     for name, p in load_presets().items():
         print(f"{name}: {p.get('description', '')}")
+
+
+PACK_SKIP_DIRS = {".venv", "venv", "tmp", "__pycache__", ".git"}
+PACK_EXT = {".py", ".bat", ".md", ".json", ".txt", ".ttf"}
+
+
+def cmd_pack(dest=None):
+    """Zip the tool (code, fonts, presets, notes, guide; no videos) for upload to a cloud chat."""
+    import zipfile
+    dest = os.path.abspath(dest or os.path.join(HERE, "clipdesk-pack.zip"))
+    n = 0
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, dirs, files in os.walk(HERE):
+            dirs[:] = [d for d in dirs if d not in PACK_SKIP_DIRS and not d.endswith(("_clipdesk", "-log", "-seams"))]
+            for f in files:
+                p = os.path.join(root, f)
+                if (os.path.splitext(f)[1].lower() in PACK_EXT and not f.startswith("HANDOFF")
+                        and not f.endswith(".captions.txt") and not f.endswith("_report.txt") and p != dest):
+                    z.write(p, os.path.join("clipdesk", os.path.relpath(p, HERE)).replace(os.sep, "/"))
+                    n += 1
+    print(f"pack:  {dest}\nfiles: {n}, {mb(dest):.1f} MB\nIn the cloud: unzip, cd clipdesk, "
+          "pip install -r requirements.txt, then python clipdesk.py <command>.")
 
 
 def story(script, args):
@@ -716,6 +749,7 @@ def main(argv=None):
     pv.add_argument("--at", help="time in the first input (default: preview_at in the job, else 1/3 in)")
     sp.add_parser("run", help="do the job and export").add_argument("job")
     sp.add_parser("presets", help="list saved presets")
+    sp.add_parser("pack", help="zip the tool folder (no videos) for a cloud chat").add_argument("dest", nargs="?")
     for name, help_ in (("inspect", "story: log a clip (contact sheet, cuts, freezes, loudness)"),
                         ("render-edl", "story: render a cut from an EDL json"),
                         ("check-seams", "story: check every cut of a rendered EDL")):
@@ -738,17 +772,26 @@ def main(argv=None):
             cmd_run(a.job)
         elif a.cmd == "presets":
             cmd_presets()
+        elif a.cmd == "pack":
+            cmd_pack(a.dest)
         else:
             story({"inspect": "inspect_clip.py", "render-edl": "render_edl.py",
                    "check-seams": "check_seams.py"}[a.cmd], a.args)
     except Fail as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    except FileNotFoundError as e:
-        if "ffmpeg" in str(e) or "ffprobe" in str(e):
-            print("Error: FFmpeg isn't installed or isn't on PATH. Install it with: winget install Gyan.FFmpeg", file=sys.stderr)
+    except FileNotFoundError:
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):  # Windows' error doesn't name the program
+            print("Error: FFmpeg isn't installed or isn't on PATH. Install it with `winget install Gyan.FFmpeg` (Windows) "
+                  "or `apt install ffmpeg` (Linux).", file=sys.stderr)
             return 1
         raise
+    except ImportError as e:
+        if "faster_whisper" not in str(e):
+            raise
+        print("Error: Whisper isn't installed, so speech can't be turned into subtitles. Install it with "
+              "`pip install faster-whisper`, or use cues.json or a script as the subtitle source.", file=sys.stderr)
+        return 1
     return 0
 
 

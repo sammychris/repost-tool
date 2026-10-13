@@ -283,7 +283,8 @@ with gr.Blocks(title="Repost Tool") as app:
             export_btn = gr.Button("Export", variant="primary")
             result = gr.Video(label="Result")
             status = gr.Markdown()
-            gr.Button("Open output folder").click(lambda: os.startfile(OUT_DIR) if os.path.isdir(OUT_DIR) else None)
+            gr.Button("Open output folder").click(lambda: (os.startfile(OUT_DIR) if hasattr(os, "startfile") else subprocess.Popen(["xdg-open", OUT_DIR]))
+                if os.path.isdir(OUT_DIR) else None)
 
     look = [video, scrub, size, zoom, pan, burned, background, hook1, hook2, credit, caps_on, cap_size, cap_text, guides]
     for c in look[1:]:
