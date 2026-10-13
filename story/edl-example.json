@@ -1,0 +1,134 @@
+{
+ "output": "nemesis-clip1-final.mp4",
+ "width": 1920,
+ "height": 1080,
+ "fps": 30,
+ "loudness": -16,
+ "true_peak": -1.5,
+ "sources": {
+  "T1": "take1-upscaled.mp4",
+  "T2": "take2-upscaled.mp4",
+  "FA": "fix-bell.mp4",
+  "FB": "fix-jump.mp4"
+ },
+ "segments": [
+  {
+   "note": "WIDE: they burst in, 'Everybody down', punters drop",
+   "v": "T2",
+   "in": 0.0,
+   "out": 4.208
+  },
+  {
+   "note": "Henchman sips tea",
+   "v": "T2",
+   "in": 4.208,
+   "out": 5.15
+  },
+  {
+   "note": "Henchman behind his paper (newspaper glitch cut out; frozen tail trimmed)",
+   "v": "T2",
+   "in": 6.7,
+   "out": 7.7
+  },
+  {
+   "note": "'Fill it' at the window; cashier reaches for the till (ends before take 2's sweat shot flashes in)",
+   "v": "T2",
+   "in": 8.083,
+   "out": 11.6
+  },
+  {
+   "note": "Sweat close-up from take 1 (take 2's read as relaxing)",
+   "v": "T1",
+   "in": 11.417,
+   "out": 14.233
+  },
+  {
+   "note": "Henchman lowers paper, nods; radio call starts under him (J-cut)",
+   "v": "T2",
+   "in": 14.125,
+   "out": 16.4,
+   "audio": [
+    {
+     "src": "T2",
+     "in": 14.125,
+     "out": 15.5
+    },
+    {
+     "src": "T1",
+     "in": 15.5,
+     "out": 16.4
+    }
+   ]
+  },
+  {
+   "note": "INSERT (cause): race bell rings; fix clip muted, bell sound from the big clips",
+   "v": "FA",
+   "in": 0.2,
+   "out": 1.57,
+   "audio": [
+    {
+     "src": "T2",
+     "in": 16.45,
+     "out": 16.95
+    },
+    {
+     "src": "T1",
+     "in": 16.48,
+     "out": 16.87
+    },
+    {
+     "src": "T2",
+     "in": 16.45,
+     "out": 16.93
+    }
+   ]
+  },
+  {
+   "note": "REACTION: he jumps, stocking rolled up; bell tail then room tone",
+   "v": "FB",
+   "in": 1.75,
+   "out": 4.0,
+   "audio": [
+    {
+     "src": "T1",
+     "in": 16.48,
+     "out": 16.87
+    },
+    {
+     "src": "ROOMTONE",
+     "dur": 1.86
+    }
+   ]
+  },
+  {
+   "note": "EFFECT: gun jerks up, blast into the ceiling",
+   "v": "T2",
+   "in": 16.95,
+   "out": 18.75
+  },
+  {
+   "note": "Plaster pours at the window",
+   "v": "T2",
+   "in": 18.75,
+   "out": 20.583
+  },
+  {
+   "note": "Cashier rises in plaster",
+   "v": "T2",
+   "in": 20.583,
+   "out": 21.667
+  },
+  {
+   "note": "'Run.'",
+   "v": "T2",
+   "in": 21.667,
+   "out": 22.55
+  },
+  {
+   "note": "They run out; Henchman phones the boss (mask-slip section cut)",
+   "v": "T2",
+   "in": 23.333,
+   "out": 27.06
+  }
+ ]
+}

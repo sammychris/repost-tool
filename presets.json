@@ -1,0 +1,34 @@
+{
+ "meme": {
+  "description": "Meme Stack: 9:16, punchy hook (line1 white, line2 gold), credit, big white captions under the video.",
+  "stack": {"preset": "meme"},
+  "frame": {"mode": "9:16", "zoom": 1.35, "background": "black"},
+  "subtitles": {"source": "whisper", "style": "white", "size": 66}
+ },
+ "drama": {
+  "description": "Drama Stack: 9:16, line1 = title, line2 = 'Part N' (set \"part\"). No jokes, no emojis.",
+  "stack": {"preset": "drama"},
+  "frame": {"mode": "9:16", "zoom": 1.35, "background": "black"},
+  "subtitles": {"source": "whisper", "style": "white", "size": 66}
+ },
+ "wide stack": {
+  "description": "Stack with a wider crop, for characters near the frame edges (like the Usual Suspects clip).",
+  "frame": {"mode": "9:16", "zoom": 1.22, "background": "black"}
+ },
+ "orange subs": {
+  "description": "Orange subtitles (comedy).",
+  "subtitles": {"source": "whisper", "style": "orange"}
+ },
+ "yellow subs": {
+  "description": "Yellow subtitles.",
+  "subtitles": {"source": "whisper", "style": "yellow"}
+ },
+ "boxed subs": {
+  "description": "White subtitles on a black box (busy backgrounds).",
+  "subtitles": {"source": "whisper", "style": "black_box"}
+ },
+ "quiet music": {
+  "description": "Music ducked under dialogue at the auto level (about 12.5 LU below the dialogue).",
+  "music": {"mode": "duck", "level": "auto", "fade_in": 0.8, "fade_out": 2.5}
+ }
+}
