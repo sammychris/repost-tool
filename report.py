@@ -51,8 +51,9 @@ def write(out, videos, planned, path, images=(), loud_target=None, other_sources
     add = lambda name, ok, detail: lines.append(f"{name:<9}{ok:<6}{detail}")
 
     tol = 2 / fps
-    add("LENGTH", "PASS" if abs(dur - planned) <= tol else "FAIL",
-        f"planned {planned:.2f}s  actual {dur:.2f}s  (tolerance 2 frames)")
+    vdur = float(v["duration"]) if v and v.get("duration") not in (None, "N/A") else dur  # picture length, like `planned`
+    add("LENGTH", "PASS" if abs(vdur - planned) <= tol else "FAIL",
+        f"planned {planned:.2f}s  actual {vdur:.2f}s picture  (tolerance 2 frames)")
 
     if v and a:
         off, gap = av_gaps(v, a, dur)

@@ -1,6 +1,6 @@
 # Clip Desk: tool guide
 
-**Version:** 1.1.0 (2026-10-13)
+**Version:** 1.2.0 (2026-10-17)
 **Folder:** `C:\Users\SAMMY\Desktop\video tool`
 **Rule:** whenever the tool changes, update this guide and bump the version (patch = fix, minor = new command or field).
 
@@ -16,6 +16,7 @@ Before a job, read `style-notes.md` (the user's preferences).
 3. **No needless re-processing.**
    - Audio-only jobs (music) copy the picture untouched (`-c:v copy`). Verified bit-identical.
    - Clips that match exactly (codec, size, fps, pixel format, audio format) and need no trims are joined directly (`-c copy`).
+   - Joins follow the **picture** length. AI clips' sound often runs a little past the picture (e.g. 0.06 s). The extra sound is cut at each join, so the next clip stays in sync and there is no held frame.
    - Anything else is re-encoded, for safety.
 4. **Never overwrites.**
    - Output goes next to the first input, or into a `3 Final` folder if one exists there or one level up.
@@ -64,7 +65,7 @@ SIZE     INFO  sources 12.9 MB -> output 2.4 MB
 - The summary line says `all PASS` or how many FAILs. On a FAIL, read the line, fix the job and re-run.
 
 ## Windows and Linux
-The same folder runs unchanged on both. Linux (or a cloud chat): unzip `clipdesk-pack.zip`, `cd clipdesk`, `pip install -r requirements.txt`, then `python clipdesk.py <command>`. Needs `ffmpeg`/`ffprobe` on PATH (`apt install ffmpeg`). Whisper (`faster-whisper`) is optional: without it, Whisper subtitles fail with a clear message and everything else works. Fonts always come from `fonts/`.
+The same folder runs unchanged on both. Linux (or a cloud chat): unzip `clipdesk-pack.zip`, `cd clipdesk`, `pip install numpy Pillow faster-whisper`, then `python clipdesk.py <command>` (Gradio is only for the web page; don't install it in the cloud). Runs on Python 3.10+. Needs `ffmpeg`/`ffprobe` on PATH (`apt install ffmpeg`). Whisper (`faster-whisper`) is optional: without it, Whisper subtitles fail with a clear message and everything else works. Fonts always come from `fonts/`.
 
 Story cuts follow `story\STORY_EDIT.md` (full workflow) and `story\edit-rules.md`.
 
@@ -129,7 +130,8 @@ Every section is optional except `inputs`. Leave a section out to keep the origi
   - `"cues.json"`: from `subs-detect`, with each cue's `text` filled in. Best when the clip has burned-in subtitles. Cues with empty text are skipped with a warning. A bare `cues.json` is found in `<first input>_clipdesk\`.
   - `"whisper"`: local speech-to-text (`"model": "small"` default, or `"base.en"` for speed).
   - `"script.txt"`: either `start-end | text` lines (the web page's format, e.g. `1.20-2.85 | Who's on first?`), or plain lines with no times, which are timed against Whisper's word timings.
-- `style`: `white` | `orange` | `yellow` | `black_box`.
+- `style`: `sammy` | `white` | `orange` | `yellow` | `black_box`.
+  - **`sammy` = Sammy's movie-clip subtitles, the default for finished films** (preset "sammy subs"): Inter ExtraBold, yellow-orange `#FFE54C`, black outline 4.5, size 64 at 1080p, lowercase, bottom centre. On Stack it keeps the colour, outline and lowercase in the Stack caption position.
 - `size`: Stack/frame captions default 66. Original-format videos use house style: Inter Medium 44 (at 1080p), off-white, soft outline, bottom centre.
 - `remove_burned: true` crops out the old subtitle band (86–94% of the height). In `original` mode it crops to 86% of the width and height and scales back up to the original size, so the size doesn't change.
 
@@ -155,7 +157,7 @@ Every section is optional except `inputs`. Leave a section out to keep the origi
 **`preview_at`**: the time for `preview` (optional).
 
 ## Presets (`presets.json`)
-`meme`, `drama`, `wide stack`, `orange subs`, `yellow subs`, `boxed subs`, `quiet music`. Run `clipdesk.bat presets` for descriptions. Add a preset by adding an entry with a `description` and any job sections.
+`sammy subs` (use this for finished films), `meme`, `drama`, `wide stack`, `orange subs`, `yellow subs`, `boxed subs`, `quiet music`. Run `clipdesk.bat presets` for descriptions. Add a preset by adding an entry with a `description` and any job sections.
 
 ## Recipes
 Add music, keep everything else:
@@ -186,8 +188,9 @@ Merge scenes, then Stack for Shorts, Part 2:
 | `presets.json`, `style-notes.md` | presets, the user's preferences |
 | `story/` | story-cut workflow and scripts (`inspect`, `render-edl`, `check-seams`) |
 
-Needs: Python 3.11+ with `.venv` (made by `run.bat` on first launch), FFmpeg on PATH (`winget install Gyan.FFmpeg` on Windows, `apt install ffmpeg` on Linux).
+Needs: Python 3.10+ with `.venv` (made by `run.bat` on first launch), FFmpeg on PATH (`winget install Gyan.FFmpeg` on Windows, `apt install ffmpeg` on Linux).
 
 ## Changelog
 - **1.0.0 (2026-10-13):** command mode, job files, Stack presets, subtitle detection, cold open, merge/trim/images, music modes, story commands, `--native-size`.
 - **1.1.0 (2026-10-13):** run report (`_report.txt`) for `run` and `render-edl`; `pack` command; runs on Linux too (tested in Docker); Whisper optional; lossless intermediates are .mov (.mkv dropped the last frame of Stack jobs); clear message when FFmpeg is missing on Windows.
+- **1.2.0 (2026-10-17):** `sammy` subtitle style + "sammy subs" preset; joins follow the picture length (sound cut at the picture's end: direct joins stay in sync, re-encoded joins no longer hold a frame); report LENGTH checks the picture; runs on Python 3.10 (render.py no longer needs 3.12); temp-file cleanup never crashes a job; cloud install is `pip install numpy Pillow faster-whisper`.

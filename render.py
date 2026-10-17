@@ -83,6 +83,9 @@ def write_ass(path, g, hook1, hook2, credit, lines, cap_size, sub_style=None):
     if credit:
         ev.append(f"Dialogue: 0,0:00:00.00,9:59:59.99,Credit,,0,0,0,,{{\\pos({W // 2},{g['credit_y']})}}{clean(credit)}")
     ev += [f"Dialogue: 0,{ass_time(a)},{ass_time(b)},Sub,,0,0,0,,{clean(t)}" for a, b, t in lines]
+    # Built outside the big f-string: a nested f-string reusing its quotes needs Python 3.12.
+    sub_style = sub_style or (f"Style: Sub,Inter Display ExtraBold,{cap},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,"
+                              f"0,0,0,0,100,100,0,0,1,{round(5 * cap / 66)},0,8,{px(70)},{px(70)},{g['cap_y']},1")
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"""[Script Info]
 ScriptType: v4.00+
@@ -95,7 +98,7 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Hook,Inter Display Black,{px(78)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,{px(60)},{px(60)},0,1
 Style: Credit,Inter Display Medium,{px(34)},&H00A0A0A0,&H00A0A0A0,&H00000000,&H00000000,0,0,0,0,100,100,1,0,1,0,0,5,{px(60)},{px(60)},0,1
-{sub_style or f'Style: Sub,Inter Display ExtraBold,{cap},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,{round(5 * cap / 66)},0,8,{px(70)},{px(70)},{g['cap_y']},1'}
+{sub_style}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -173,8 +176,16 @@ def render(a):
     try:
         subprocess.run(cmd, cwd=HERE, check=True)
     finally:
-        os.remove(os.path.join(HERE, ass))
+        remove_quietly(os.path.join(HERE, ass))
     return a.out
+
+
+def remove_quietly(path):
+    """Delete a temp file; if deleting isn't allowed (some remote shells block it), leave it in tmp/."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def parser():

@@ -14,7 +14,8 @@ HERE = render.HERE
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
 SUB_BAND = (0.86, 0.94)  # where burned-in subtitles sit, as a share of the source height
 # Subtitle colours as ASS &HAABBGGRR
-COLOURS = {"white": "&H00FFFFFF", "orange": "&H001F9AFF", "yellow": "&H004DE1FF", "black_box": "&H00FFFFFF"}
+COLOURS = {"white": "&H00FFFFFF", "orange": "&H001F9AFF", "yellow": "&H004DE1FF", "black_box": "&H00FFFFFF",
+           "sammy": "&H004CE5FF"}  # sammy = Sammy's movie-clip style: bold yellow-orange, thick outline, lowercase
 HQ = ["-c:v", "libx264", "-crf", "17", "-preset", "medium", "-pix_fmt", "yuv420p"]
 SMALL = ["-c:v", "libx264", "-crf", "23", "-preset", "slow", "-pix_fmt", "yuv420p"]
 # Intermediates are .mov: .mkv rounds timestamps to 1 ms and the overlay then drops the last frame.
@@ -84,6 +85,8 @@ def info(path):
         num, den = (int(x) for x in v["r_frame_rate"].split("/"))
         d.update(width=v["width"], height=v["height"], fps=round(num / den, 3), fps_exact=v["r_frame_rate"],
                  vcodec=v["codec_name"], pix_fmt=v.get("pix_fmt"))
+        # Picture length: AI clips' sound often runs a little past the picture; joins follow the picture.
+        d["vduration"] = round(float(v["duration"]), 3) if v.get("duration") not in (None, "N/A") else d["duration"]
     if a:
         d.update(acodec=a["codec_name"], sample_rate=int(a["sample_rate"]), channels=a["channels"])
     return d
@@ -334,7 +337,7 @@ def assemble(segs, out, codec, transition="cut"):
             d, has_audio = s["dur"], False
         else:
             i = info(s["file"])
-            end = s["end"] if s.get("end") is not None else i["duration"]
+            end = s["end"] if s.get("end") is not None else i["vduration"]
             if end <= s["start"]:
                 raise Fail(f"Trim of {os.path.basename(s['file'])}: end {stamp(end)} is not after start {stamp(s['start'])}.")
             cmd += ["-ss", str(s["start"]), "-to", str(end), "-i", s["file"]]
@@ -364,15 +367,28 @@ def assemble(segs, out, codec, transition="cut"):
     return out
 
 
+def stream_durations(path):
+    """(video seconds, audio seconds or None) from the streams themselves, not the container."""
+    j = json.loads(ff(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "json", path],
+                      f"Reading {path}").stdout)
+    d = {s["codec_type"]: float(s["duration"]) for s in j["streams"] if s.get("duration") not in (None, "N/A")}
+    return d.get("video"), d.get("audio")
+
+
 def concat_copy(files, out):
     lst = tmp(".txt")
     with open(lst, "w", encoding="utf-8") as f:
-        f.writelines(f"file '{p.replace(chr(92), '/')}'\n" for p in files)
+        for p in files:
+            f.write(f"file '{p.replace(chr(92), '/')}'\n")
+            v, a = stream_durations(p)
+            if v and a and a > v + 0.001:
+                # Sound longer than picture: without this the next clip's sound starts late (out of sync).
+                f.write(f"outpoint {v:.6f}\n")
     try:
         ff(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy",
             "-movflags", "+faststart", out], "Joining the clips (direct copy)")
     finally:
-        os.remove(lst)
+        render.remove_quietly(lst)
     return out
 
 
@@ -424,9 +440,14 @@ def sub_lines(sub, video, job):
 def sub_style(sub, g, house):
     colour = COLOURS.get(sub.get("style", "white"))
     if not colour:
-        raise Fail(f"Unknown subtitle style '{sub.get('style')}'. Use white, orange, yellow or black_box.")
+        raise Fail(f"Unknown subtitle style '{sub.get('style')}'. Use sammy, white, orange, yellow or black_box.")
     box = sub.get("style") == "black_box"
     border, outline_col = ("3", "&H40000000") if box else ("1", "&H00000000")
+    if house and sub.get("style") == "sammy":  # size 64 and outline 4.5 at 1080p, bottom centre
+        k = min(g["W"], g["H"]) / 1080
+        return (f"Style: Sub,Inter Display ExtraBold,{round(sub.get('size', 64) * k)},{colour},{colour},&H00000000,"
+                f"&H80000000,0,0,0,0,100,100,0,0,1,{round(4.5 * k, 1)},0,2,{round(80 * k)},{round(80 * k)},"
+                f"{round(g['H'] * .06)},1")
     if house:  # original-format video: Inter Medium 44 (at 1080p), off-white, soft outline, bottom centre
         k = min(g["W"], g["H"]) / 1080
         size = round(sub.get("size", 44) * k)
@@ -483,6 +504,8 @@ def visual_filter(job, src, src_info, ass_path):
             print("Warning: emojis in the Stack lines render as flat outlines in the text colour. "
                   "Put them in the post caption instead.")
     lines = sub_lines(sub, src, job) if sub else []
+    if sub and sub.get("style") == "sammy":
+        lines = [(a, b, t.lower()) for a, b, t in lines]
     style = sub_style(sub, g, house=mode == "original") if sub else None
     if mode == "original":
         g.update(hook_y=0, credit_y=0)
@@ -598,7 +621,7 @@ def cmd_run(job_path, preview_at=None):
         segs = segments(job)
         transition = (job.get("merge") or {}).get("transition", "cut")
         plain = all(not s.get("image") and not s["start"] and s["end"] is None for s in segs)
-        durs = {i["file"]: i.get("duration", 0) for i in infos}
+        durs = {i["file"]: i.get("vduration", 0) for i in infos}
         planned = sum(s["dur"] if s.get("image") else (s["end"] if s["end"] is not None else durs[s["file"]]) - s["start"]
                       for s in segs) - (0.5 * (len(segs) - 1) if transition == "fade" else 0)
         co = job.get("cold_open")
@@ -674,8 +697,7 @@ def cmd_run(job_path, preview_at=None):
         return finish(out, infos, segs, planned, job)
     finally:
         for t in temps:
-            if os.path.exists(t):
-                os.remove(t)
+            render.remove_quietly(t)
 
 
 def finish(out, infos, segs, planned, job):
@@ -726,8 +748,9 @@ def cmd_pack(dest=None):
                         and not f.endswith(".captions.txt") and not f.endswith("_report.txt") and p != dest):
                     z.write(p, os.path.join("clipdesk", os.path.relpath(p, HERE)).replace(os.sep, "/"))
                     n += 1
+    # Command mode needs no Gradio (web page only); a failed Gradio install used to take Whisper down with it.
     print(f"pack:  {dest}\nfiles: {n}, {mb(dest):.1f} MB\nIn the cloud: unzip, cd clipdesk, "
-          "pip install -r requirements.txt, then python clipdesk.py <command>.")
+          "pip install numpy Pillow faster-whisper, then python clipdesk.py <command>.")
 
 
 def story(script, args):

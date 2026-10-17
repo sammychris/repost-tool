@@ -190,7 +190,7 @@ def run(a):
         return render.render(a)
     finally:
         if a.captions not in ("none", "auto"):
-            os.remove(a.captions)
+            render.remove_quietly(a.captions)
 
 
 def transcribe(video, model):
